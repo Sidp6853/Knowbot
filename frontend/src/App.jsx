@@ -6,14 +6,77 @@ import { connect } from "extendable-media-recorder-wav-encoder"
 import "./App.css"
 import Projects from "./Projects"
 
-
-const API = "https://melba-austere-fraudfully.ngrok-free.dev"
+const API = "http://localhost:8000"
 
 function formatTime() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+// ── Shared chat read-only view ──
+function SharedView() {
+  let sharedMessages = []
+  let error = false
+  const sharedParam = new URLSearchParams(window.location.search).get("shared")
+  try {
+    sharedMessages = JSON.parse(decodeURIComponent(atob(sharedParam)))
+  } catch {
+    error = true
+  }
+  if (error) return (
+    <div style={{ color: "white", padding: "32px", background: "#0f1017", minHeight: "100vh" }}>
+      Invalid or corrupted share link.
+    </div>
+  )
+  return (
+    <div style={{ maxWidth: "800px", margin: "0 auto", padding: "32px 24px", fontFamily: "sans-serif", background: "#0f1017", minHeight: "100vh", color: "#d1d2d3" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px", borderBottom: "1px solid #1e2029", paddingBottom: "16px" }}>
+        <div style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius: "8px", padding: "8px 14px", fontWeight: "700", fontSize: "18px", color: "white" }}>K</div>
+        <div>
+          <div style={{ fontWeight: "700", fontSize: "18px" }}>KnowBot</div>
+          <div style={{ fontSize: "12px", color: "#4b5563" }}>Shared conversation — read only</div>
+        </div>
+        <div style={{ marginLeft: "auto", fontSize: "11px", color: "#4b5563", background: "#1e2029", padding: "4px 10px", borderRadius: "20px" }}>
+          🔒 Read only
+        </div>
+      </div>
+      {sharedMessages.map((msg, i) => (
+        <div key={i} style={{ display: "flex", gap: "12px", marginBottom: "24px" }}>
+          <div style={{
+            width: "32px", height: "32px", borderRadius: "6px", flexShrink: 0,
+            background: msg.role === "user" ? "#374151" : "linear-gradient(135deg,#6366f1,#8b5cf6)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: "700", fontSize: "13px", color: "white"
+          }}>
+            {msg.role === "user" ? "U" : "K"}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>
+              <span style={{ color: msg.role === "user" ? "#d1d2d3" : "#818cf8" }}>
+                {msg.role === "user" ? "You" : "KnowBot"}
+              </span>
+              <span style={{ fontWeight: "400", color: "#4b5563", fontSize: "11px", marginLeft: "8px" }}>{msg.time}</span>
+            </div>
+            <div style={{ fontSize: "14px", lineHeight: "1.6", color: "#d1d2d3" }}>
+              <ReactMarkdown>{msg.text}</ReactMarkdown>
+            </div>
+            {msg.sources?.length > 0 && (
+              <div style={{ fontSize: "11px", color: "#4b5563", marginTop: "6px" }}>{msg.sources.join(" · ")}</div>
+            )}
+          </div>
+        </div>
+      ))}
+      <div style={{ textAlign: "center", fontSize: "12px", color: "#2c2d30", marginTop: "40px" }}>
+        Powered by KnowBot · AI Knowledge Assistant
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
+  // Check if this is a shared view
+  const sharedParam = new URLSearchParams(window.location.search).get("shared")
+  if (sharedParam) return <SharedView />
+
   // ── Chat state ──
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState("")
@@ -21,6 +84,7 @@ export default function App() {
   const [tab, setTab] = useState("chat")
   const [selectedProject, setSelectedProject] = useState(null)
   const [projects, setProjects] = useState([])
+  const [shareCopied, setShareCopied] = useState(false)
 
   // ── File upload state ──
   const [audioFile, setAudioFile] = useState(null)
@@ -42,7 +106,6 @@ export default function App() {
   const sessionIdRef = useRef(null)
   const timerRef = useRef(null)
 
-  // Unique chat session ID — persists across page refreshes, resets on new tab
   const chatSessionIdRef = useRef(
     sessionStorage.getItem("knowbot_session_id") ||
     (() => {
@@ -52,7 +115,6 @@ export default function App() {
     })()
   )
 
-  // Register WAV encoder once on mount
   useEffect(() => {
     const setup = async () => {
       try {
@@ -65,7 +127,6 @@ export default function App() {
     setup()
   }, [])
 
-  // Fetch projects list — refetch whenever tab changes
   useEffect(() => {
     axios.get(`${API}/projects`)
       .then(res => setProjects(res.data.projects || []))
@@ -106,7 +167,7 @@ export default function App() {
     setLoading(false)
   }
 
-  // ── Clear chat session ──
+  // ── Clear chat ──
   const clearChat = async () => {
     try {
       await axios.delete(`${API}/chat/session/${chatSessionIdRef.current}`)
@@ -115,6 +176,24 @@ export default function App() {
     sessionStorage.setItem("knowbot_session_id", newId)
     chatSessionIdRef.current = newId
     setMessages([])
+  }
+
+  // ── Share chat via URL ──
+  const shareChat = () => {
+    if (messages.length === 0) {
+      alert("No messages to share yet!")
+      return
+    }
+    try {
+      const encoded = btoa(encodeURIComponent(JSON.stringify(messages)))
+      const url = `${window.location.origin}?shared=${encoded}`
+      navigator.clipboard.writeText(url).then(() => {
+        setShareCopied(true)
+        setTimeout(() => setShareCopied(false), 3000)
+      })
+    } catch {
+      alert("Failed to generate share link. Chat may be too long.")
+    }
   }
 
   // ── Audio file handler ──
@@ -208,6 +287,37 @@ export default function App() {
     }
   }
 
+  // ── Download summary as PDF or DOCX ──
+  const downloadSummary = async (format) => {
+    if (!meetingNotes) {
+      alert("No meeting summary available. Please record or upload a meeting first.")
+      return
+    }
+    try {
+      const response = await axios.post(
+        `${API}/meeting/download/${format}`,
+        {
+          summary: meetingNotes.summary || "",
+          key_decisions: meetingNotes.key_decisions || "",
+          action_items: meetingNotes.action_items || "",
+          transcript: meetingNotes.full_transcript || liveTranscript || ""
+        },
+        { responseType: "blob" }
+      )
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement("a")
+      link.href = url
+      link.setAttribute("download", `meeting-summary.${format}`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("Download failed:", err)
+      alert("Download failed. Make sure a meeting has been summarized first.")
+    }
+  }
+
   const suggestions = [
     "What is the leave policy?",
     "How do I onboard a new developer?",
@@ -261,17 +371,34 @@ export default function App() {
               <span className="channel-name">document-qa</span>
               <div className="channel-divider" />
               <span className="channel-desc">Ask anything about company policies and processes</span>
-              <button
-                onClick={clearChat}
-                style={{
-                  marginLeft: "auto", background: "none",
-                  border: "1px solid #2c2d30", color: "#4b5563",
-                  borderRadius: "6px", padding: "4px 12px",
-                  fontSize: "12px", cursor: "pointer"
-                }}
-              >
-                Clear chat
-              </button>
+
+              {/* Header buttons */}
+              <div style={{ marginLeft: "auto", display: "flex", gap: "8px", alignItems: "center" }}>
+                <button
+                  onClick={shareChat}
+                  style={{
+                    background: shareCopied ? "#166534" : "none",
+                    border: `1px solid ${shareCopied ? "#16a34a" : "#2c2d30"}`,
+                    color: shareCopied ? "#4ade80" : "#818cf8",
+                    borderRadius: "6px", padding: "4px 12px",
+                    fontSize: "12px", cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  {shareCopied ? "✓ Link copied!" : "🔗 Share Chat"}
+                </button>
+                <button
+                  onClick={clearChat}
+                  style={{
+                    background: "none",
+                    border: "1px solid #2c2d30", color: "#4b5563",
+                    borderRadius: "6px", padding: "4px 12px",
+                    fontSize: "12px", cursor: "pointer"
+                  }}
+                >
+                  Clear chat
+                </button>
+              </div>
             </div>
 
             <div className="messages">
@@ -460,6 +587,35 @@ export default function App() {
                     <div className="result-text">
                       <ReactMarkdown>{meetingNotes.raw || meetingNotes.error || "No notes generated."}</ReactMarkdown>
                     </div>
+
+                    {!meetingNotes.error && (
+                      <div style={{ display: "flex", gap: "10px", marginTop: "16px", flexWrap: "wrap" }}>
+                        <button
+                          onClick={() => downloadSummary("pdf")}
+                          style={{
+                            background: "linear-gradient(135deg,#4f8ef7,#3b6fd4)",
+                            color: "white", border: "none", borderRadius: "8px",
+                            padding: "9px 20px", cursor: "pointer",
+                            fontWeight: "600", fontSize: "13px",
+                            display: "flex", alignItems: "center", gap: "6px"
+                          }}
+                        >
+                          ⬇ Download PDF
+                        </button>
+                        <button
+                          onClick={() => downloadSummary("docx")}
+                          style={{
+                            background: "linear-gradient(135deg,#2ecc71,#27ae60)",
+                            color: "white", border: "none", borderRadius: "8px",
+                            padding: "9px 20px", cursor: "pointer",
+                            fontWeight: "600", fontSize: "13px",
+                            display: "flex", alignItems: "center", gap: "6px"
+                          }}
+                        >
+                          ⬇ Download Word
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

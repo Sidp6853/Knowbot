@@ -6,6 +6,13 @@ from dotenv import load_dotenv
 from test.rag_chain import load_rag_chain, get_answer
 from sarvam_transcribe import transcribe_chunk, transcribe_file, generate_meeting_notes
 
+from fastapi.responses import StreamingResponse
+from docx import Document
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.units import inch
+import io
 load_dotenv()
 
 app = FastAPI()
@@ -112,3 +119,78 @@ async def transcribe_meeting_file(
     notes = generate_meeting_notes(transcript, meeting_type)
     notes["full_transcript"] = transcript
     return notes
+
+@app.post("/meeting/download/docx")
+async def download_docx(data: dict):
+    summary = data.get("summary", "")
+    key_decisions = data.get("key_decisions", "")
+    action_items = data.get("action_items", "")
+    transcript = data.get("transcript", "")
+
+    doc = Document()
+    doc.add_heading("KnowBot — Meeting Summary", 0)
+
+    doc.add_heading("Summary", level=1)
+    doc.add_paragraph(summary if summary else "No summary available.")
+
+    doc.add_heading("Key Decisions", level=1)
+    doc.add_paragraph(key_decisions if key_decisions else "No key decisions recorded.")
+
+    doc.add_heading("Action Items", level=1)
+    doc.add_paragraph(action_items if action_items else "No action items recorded.")
+
+    doc.add_heading("Full Transcript", level=1)
+    doc.add_paragraph(transcript if transcript else "No transcript available.")
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename=meeting-summary.docx"}
+    )
+
+
+@app.post("/meeting/download/pdf")
+async def download_pdf(data: dict):
+    summary = data.get("summary", "")
+    key_decisions = data.get("key_decisions", "")
+    action_items = data.get("action_items", "")
+    transcript = data.get("transcript", "")
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            rightMargin=inch, leftMargin=inch,
+                            topMargin=inch, bottomMargin=inch)
+
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph("KnowBot — Meeting Summary", styles['Title']))
+    story.append(Spacer(1, 0.2 * inch))
+
+    story.append(Paragraph("Summary", styles['Heading1']))
+    story.append(Paragraph(summary if summary else "No summary available.", styles['Normal']))
+    story.append(Spacer(1, 0.2 * inch))
+
+    story.append(Paragraph("Key Decisions", styles['Heading1']))
+    story.append(Paragraph(key_decisions if key_decisions else "No key decisions recorded.", styles['Normal']))
+    story.append(Spacer(1, 0.2 * inch))
+
+    story.append(Paragraph("Action Items", styles['Heading1']))
+    story.append(Paragraph(action_items if action_items else "No action items recorded.", styles['Normal']))
+    story.append(Spacer(1, 0.2 * inch))
+
+    story.append(Paragraph("Full Transcript", styles['Heading1']))
+    story.append(Paragraph(transcript if transcript else "No transcript available.", styles['Normal']))
+
+    doc.build(story)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=meeting-summary.pdf"}
+    )

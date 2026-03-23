@@ -45,6 +45,26 @@
         "Mobile App User Stories.pdf",
         "Saffro mellow tracking.xlsx"
       ]
+    },
+    {
+      "id": "ceo-details",
+      "name": "CEO DETAILS",
+      "description": "DETAILS ABOUT CEO AND CFO",
+      "created_at": "2026-03-23",
+      "doc_count": 1,
+      "docs": [
+        "Temp. EI & DG Set at Helipad , Waghodiya.xlsx"
+      ]
+    },
+    {
+      "id": "charusat",
+      "name": "charusat",
+      "description": "students information",
+      "created_at": "2026-03-23",
+      "doc_count": 1,
+      "docs": [
+        "Mobile App User Stories.pdf"
+      ]
     }
   ]
 }

@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
-from test.rag_chain import load_rag_chain, get_answer
+from rag_chain import load_rag_chain, get_answer
 
 load_dotenv()
 
