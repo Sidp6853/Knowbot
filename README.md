@@ -200,23 +200,3 @@ Each document chunk stored in Qdrant carries:
 | M4A | — | ✅ |
 
 ---
-
-## SDG Alignment
-
-**SDG 8 — Decent Work & Economic Growth**
-Knowledge workers spend 2.5 hours/day searching for information (McKinsey, 2023). KnowBot recovers that time, directly improving workplace productivity.
-
-**SDG 9 — Industry, Innovation & Infrastructure**
-Built on open government AI infrastructure (Sarvam AI — India's own speech model), enabling Indian IT companies to adopt AI without dependency on foreign-only tools.
-
----
-
-## Startup Vision
-
-KnowBot is positioned as a **SaaS platform for Indian IT SMEs** — targeting the 50,000+ software companies that lack enterprise-grade knowledge management tools.
-
----
-
-## Team
-
-Built for Solution Challenge 2026 — CSPIT
