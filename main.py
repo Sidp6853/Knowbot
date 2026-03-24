@@ -29,7 +29,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.units import inch
 import io
-
+import httpx
 
 load_dotenv()
 
@@ -414,3 +414,75 @@ async def download_pdf(data: dict):
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=meeting-summary.pdf"}
     )
+
+@app.post("/projects/{project_id}/upload-url")
+async def upload_from_url(project_id: str, data: dict):
+    url = data.get("url", "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required.")
+
+    # Handle Google Drive links automatically
+    if "drive.google.com/file/d/" in url:
+        file_id = url.split("/file/d/")[1].split("/")[0]
+        url = f"https://drive.google.com/uc?export=download&confirm=t&id={file_id}"
+        filename = f"gdrive_{file_id}.pdf"
+        ext = ".pdf"
+    else:
+        clean_url = url.split("?")[0]
+        filename = clean_url.split("/")[-1]
+        ext = os.path.splitext(filename)[1].lower()
+
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type '{ext}'. Only PDF, PPTX, XLSX allowed.")
+
+    # Find project
+    data_projects = load_projects()
+    project = next((p for p in data_projects["projects"] if p["id"] == project_id), None)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    # Download file
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=60) as client:
+            response = await client.get(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            })
+            response.raise_for_status()
+            content = response.content
+            # Check if Google returned HTML instead of file
+            if content[:5] in [b"<!DOC", b"<html", b"\xef\xbb\xbf<"]:
+                raise HTTPException(status_code=400, detail="Google Drive returned a preview page. Make sure sharing is set to 'Anyone with the link'.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to download file: {str(e)}")
+
+    # Save to project docs folder
+    docs_folder = os.path.join(PROJECTS_DIR, project_id, "docs")
+    os.makedirs(docs_folder, exist_ok=True)
+    file_path = os.path.join(docs_folder, filename)
+
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # Upload to S3
+    try:
+        upload_file_to_s3(file_path, project_id, filename)
+    except Exception as e:
+        print(f"[S3] Upload warning: {e}")
+
+    # Ingest into Qdrant
+    success = ingest_project(project_id, project["name"])
+    if not success:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail="Indexing failed.")
+
+    # Update projects.json
+    if filename not in project["docs"]:
+        project["docs"].append(filename)
+        project["doc_count"] = len(project["docs"])
+    save_projects(data_projects)
+    invalidate_rag_cache(project_id)
+
+    return {"project": project}

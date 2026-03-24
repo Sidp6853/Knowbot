@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import axios from "axios"
 
- const API = "http://localhost:8000"
+const API = "http://localhost:8000"
 const ALLOWED = [".pdf", ".pptx", ".xlsx"]
 
 function getExt(filename) {
@@ -15,24 +15,27 @@ function formatDate(dateStr) {
 }
 
 export default function Projects({ onBack, onSelectProject }) {
-  const [projects, setProjects]         = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [view, setView]                 = useState("list")       // "list" | "detail"
+  const [projects, setProjects]           = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [view, setView]                   = useState("list")
   const [activeProject, setActiveProject] = useState(null)
-  const [showCreate, setShowCreate]     = useState(false)
-  const [showRename, setShowRename]     = useState(false)
-  const [newName, setNewName]           = useState("")
-  const [newDesc, setNewDesc]           = useState("")
-  const [renameVal, setRenameVal]       = useState("")
-  const [uploading, setUploading]       = useState(false)
-  const [toast, setToast]               = useState(null)
+  const [showCreate, setShowCreate]       = useState(false)
+  const [showRename, setShowRename]       = useState(false)
+  const [showUrlModal, setShowUrlModal]   = useState(false)
+  const [newName, setNewName]             = useState("")
+  const [newDesc, setNewDesc]             = useState("")
+  const [renameVal, setRenameVal]         = useState("")
+  const [urlInput, setUrlInput]           = useState("")
+  const [uploading, setUploading]         = useState(false)
+  const [urlUploading, setUrlUploading]   = useState(false)
+  const [toast, setToast]                 = useState(null)
   const fileInputRef = useRef(null)
 
   useEffect(() => { fetchProjects() }, [])
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
 
   const fetchProjects = async () => {
@@ -122,6 +125,44 @@ export default function Projects({ onBack, onSelectProject }) {
     e.target.value = ""
   }
 
+  // ── Upload from URL ──
+  const handleUrlUpload = async () => {
+    const url = urlInput.trim()
+    if (!url) return
+
+    // Basic URL validation
+    try { new URL(url) } catch {
+      showToast("Please enter a valid URL.", "error")
+      return
+    }
+
+    // Check extension
+    const cleanUrl = url.split("?")[0]
+    const ext = cleanUrl.includes(".") ? cleanUrl.slice(cleanUrl.lastIndexOf(".")).toLowerCase() : ""
+    if (!ALLOWED.includes(ext)) {
+      showToast(`Unsupported file type "${ext}". Only PDF, PPTX, XLSX allowed.`, "error")
+      return
+    }
+
+    setUrlUploading(true)
+    try {
+      const res = await axios.post(
+        `${API}/projects/${activeProject.id}/upload-url`,
+        { url }
+      )
+      setActiveProject(res.data.project)
+      setProjects(prev => prev.map(p =>
+        p.id === activeProject.id ? res.data.project : p
+      ))
+      showToast("File downloaded and indexed successfully!")
+      setUrlInput("")
+      setShowUrlModal(false)
+    } catch (err) {
+      showToast(err.response?.data?.detail || "Failed to fetch file from URL.", "error")
+    }
+    setUrlUploading(false)
+  }
+
   const deleteDoc = async (filename) => {
     if (!confirm(`Delete "${filename}"?`)) return
     try {
@@ -156,10 +197,10 @@ export default function Projects({ onBack, onSelectProject }) {
 
   const fileColor = (filename) => {
     const ext = getExt(filename)
-    if (ext === ".pdf")  return { bg: "#FCEBEB", color: "#A32D2D", dark: "#501313", darkColor: "#F09595" }
-    if (ext === ".pptx") return { bg: "#FAEEDA", color: "#854F0B", dark: "#412402", darkColor: "#FAC775" }
-    if (ext === ".xlsx") return { bg: "#EAF3DE", color: "#3B6D11", dark: "#173404", darkColor: "#C0DD97" }
-    return { bg: "#E6F1FB", color: "#0C447C", dark: "#042C53", darkColor: "#B5D4F4" }
+    if (ext === ".pdf")  return { bg: "#FCEBEB", color: "#A32D2D" }
+    if (ext === ".pptx") return { bg: "#FAEEDA", color: "#854F0B" }
+    if (ext === ".xlsx") return { bg: "#EAF3DE", color: "#3B6D11" }
+    return { bg: "#E6F1FB", color: "#0C447C" }
   }
 
   return (
@@ -295,32 +336,49 @@ export default function Projects({ onBack, onSelectProject }) {
           <div style={{ maxWidth: "800px" }}>
 
             {/* Upload zone */}
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              style={{ border: "2px dashed #1e2029", borderRadius: "12px", padding: "32px", textAlign: "center", cursor: "pointer", marginBottom: "24px", transition: "border-color 0.2s, background 0.2s" }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = "#4f46e5"; e.currentTarget.style.background = "rgba(99,102,241,0.05)" }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e2029"; e.currentTarget.style.background = "transparent" }}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.pptx,.xlsx"
-                style={{ display: "none" }}
-                onChange={handleFileUpload}
-              />
-              {uploading ? (
-                <div style={{ color: "#818cf8", fontSize: "14px", fontWeight: "500" }}>Uploading and indexing...</div>
-              ) : (
-                <>
-                  <div style={{ fontSize: "28px", marginBottom: "10px" }}>+</div>
-                  <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "4px" }}>
-                    Click to upload documents
-                  </div>
-                  <div style={{ fontSize: "12px", color: "#4b5563" }}>
-                    Supported: PDF, PPTX, XLSX
-                  </div>
-                </>
-              )}
+            <div style={{ marginBottom: "24px" }}>
+              {/* Upload from device */}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{ border: "2px dashed #1e2029", borderRadius: "12px", padding: "28px", textAlign: "center", cursor: "pointer", marginBottom: "12px", transition: "border-color 0.2s, background 0.2s" }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "#4f46e5"; e.currentTarget.style.background = "rgba(99,102,241,0.05)" }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e2029"; e.currentTarget.style.background = "transparent" }}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.pptx,.xlsx"
+                  style={{ display: "none" }}
+                  onChange={handleFileUpload}
+                />
+                {uploading ? (
+                  <div style={{ color: "#818cf8", fontSize: "14px", fontWeight: "500" }}>Uploading and indexing...</div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: "24px", marginBottom: "8px" }}>📁</div>
+                    <div style={{ fontSize: "14px", color: "#9ca3af", marginBottom: "4px" }}>
+                      Click to upload from your device
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#4b5563" }}>PDF, PPTX, XLSX supported</div>
+                  </>
+                )}
+              </div>
+
+              {/* Upload from URL button */}
+              <button
+                onClick={() => setShowUrlModal(true)}
+                style={{
+                  width: "100%", padding: "12px", background: "rgba(99,102,241,0.08)",
+                  border: "1px solid rgba(99,102,241,0.3)", borderRadius: "10px",
+                  color: "#818cf8", fontSize: "13px", fontWeight: "500",
+                  cursor: "pointer", display: "flex", alignItems: "center",
+                  justifyContent: "center", gap: "8px", transition: "background 0.2s"
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(99,102,241,0.15)"}
+                onMouseLeave={e => e.currentTarget.style.background = "rgba(99,102,241,0.08)"}
+              >
+                🔗 Add file from URL / Link
+              </button>
             </div>
 
             {/* Documents list */}
@@ -361,6 +419,65 @@ export default function Projects({ onBack, onSelectProject }) {
           </div>
         )}
       </div>
+
+      {/* ── Add via URL Modal ── */}
+      {showUrlModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }}>
+          <div style={{ background: "#161720", border: "1px solid #2c2d30", borderRadius: "16px", padding: "28px", width: "480px", maxWidth: "90vw" }}>
+            <div style={{ fontSize: "17px", fontWeight: "600", color: "#f9fafb", marginBottom: "6px" }}>Add File from URL</div>
+            <div style={{ fontSize: "12px", color: "#4b5563", marginBottom: "20px" }}>
+              Paste a direct link to a PDF, PPTX, or XLSX file. The file will be downloaded and indexed automatically.
+            </div>
+
+            <label style={{ fontSize: "12px", color: "#6b7280", display: "block", marginBottom: "6px", fontWeight: "500" }}>
+              File URL
+            </label>
+            <input
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleUrlUpload()}
+              placeholder="https://example.com/document.pdf"
+              autoFocus
+              style={{
+                width: "100%", background: "#0d0e12", border: "1px solid #2c2d30",
+                borderRadius: "8px", padding: "10px 12px", color: "#d1d2d3",
+                fontSize: "13px", outline: "none", boxSizing: "border-box", marginBottom: "8px"
+              }}
+            />
+            <div style={{ fontSize: "11px", color: "#374151", marginBottom: "20px" }}>
+              ⚠ URL must point directly to a .pdf, .pptx, or .xlsx file
+            </div>
+
+            {urlUploading && (
+              <div style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", color: "#818cf8", marginBottom: "16px" }}>
+                ⏳ Downloading and indexing file... this may take a moment.
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => { setShowUrlModal(false); setUrlInput("") }}
+                disabled={urlUploading}
+                style={{ background: "none", border: "1px solid #2c2d30", color: "#9b9fa4", borderRadius: "8px", padding: "9px 18px", fontSize: "13px", cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUrlUpload}
+                disabled={!urlInput.trim() || urlUploading}
+                style={{
+                  background: urlInput.trim() && !urlUploading ? "linear-gradient(135deg,#6366f1,#8b5cf6)" : "#374151",
+                  color: "#fff", border: "none", borderRadius: "8px",
+                  padding: "9px 20px", fontSize: "13px", fontWeight: "600",
+                  cursor: urlInput.trim() && !urlUploading ? "pointer" : "not-allowed"
+                }}
+              >
+                {urlUploading ? "Adding..." : "Add File"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Create Project Modal ── */}
       {showCreate && (

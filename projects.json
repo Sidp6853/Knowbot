@@ -57,14 +57,22 @@
       ]
     },
     {
-      "id": "charusat",
-      "name": "charusat",
-      "description": "students information",
+      "id": "employee",
+      "name": "Employee",
+      "description": "data about employee",
       "created_at": "2026-03-23",
       "doc_count": 1,
       "docs": [
-        "Mobile App User Stories.pdf"
+        "employee_dataset.xlsx"
       ]
+    },
+    {
+      "id": "project",
+      "name": "project",
+      "description": "data of project",
+      "created_at": "2026-03-23",
+      "doc_count": 0,
+      "docs": []
     }
   ]
 }
